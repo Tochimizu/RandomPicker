@@ -1,0 +1,772 @@
+# Random Media Picker — Cahier des charges technique
+
+Spécification V1.0 — Android
+
+Le projet est désormais défini comme une application Android native, entièrement locale, capable d'afficher une mosaïque de médias tirés aléatoirement dans une arborescence de dossiers sélectionnés.
+
+Plateforme
+
+Android natif
+
+Affichage
+
+Mosaïque dynamique
+
+Aléatoire
+
+Random + Shuffle
+
+Audio
+
+Musique + son vidéo
+
+Exploration
+
+Récursive
+
+Fonctionnement
+
+100 % hors ligne
+
+## 1. Décisions structurantes
+
+La principale différence par rapport à un diaporama classique est que chaque cellule de la mosaïque dispose de son propre média et de son propre cycle de renouvellement.
+
+Par exemple, avec une grille 3 × 3, neuf médias sont visibles simultanément. Lorsqu'une image atteint sa durée d'affichage, seule la cellule correspondante change. Les autres continuent leur lecture normalement.
+
+Aperçu conceptuel du lecteur
+
+3 × 3
+
+IMAGE
+
+VIDÉO
+
+GIF
+
+GIF
+
+IMAGE
+
+VIDÉO
+
+IMAGE
+
+GIF
+
+IMAGE
+
+Shuffle actif
+
+Audio focalisé
+
+Représentation fonctionnelle, sans lecture multimédia réelle.
+
+Pour éviter qu'une mosaïque de plusieurs vidéos produise simultanément des bandes-son différentes, je fixe la règle suivante pour la V1 : une seule vidéo peut avoir son audio actif à un instant donné, tandis que la musique externe peut continuer selon le mode de mixage choisi.
+
+Les éléments ci-dessous forment la spécification de référence à transmettre pour le développement.
+
+## 2. Spécification fonctionnelle détaillée
+
+# RANDOM MEDIA PICKER
+
+## Cahier des charges technique et fonctionnel — Version 1.0
+
+**Plateforme :** Android\
+**Langage recommandé :** Kotlin\
+**Interface :** Jetpack Compose / Material 3\
+**Type :** Application multimédia locale\
+**Architecture :** MVVM + Clean Architecture pragmatique\
+**Statut :** Spécification initiale prête pour découpage en tâches de développement
+
+---
+
+## 1. Objectif du produit
+
+Développer une application Android permettant de sélectionner un dossier racine contenant des fichiers multimédias, de parcourir récursivement tous ses sous-dossiers et de choisir les dossiers à inclure dans un ensemble de tirage aléatoire appelé *Random Set*.
+
+L'application doit ensuite afficher des images, GIF et vidéos au sein d'une mosaïque configurable, où les cellules peuvent renouveler leur contenu indépendamment.
+
+L'utilisateur doit pouvoir configurer le mode aléatoire, les durées d'affichage, le comportement des vidéos, la musique de fond et l'audio original des vidéos.
+
+### Contraintes principales
+
+- Fonctionnement hors ligne.
+- Aucun compte utilisateur.
+- Aucun serveur ni backend requis.
+- Aucune modification des fichiers originaux.
+- Accès limité aux dossiers autorisés par l'utilisateur.
+- Sauvegarde locale des préférences.
+- Compatibilité avec les smartphones et tablettes Android.
+
+## 2. Périmètre et compatibilité
+
+**Version Android minimale proposée :** Android 10, API 29.
+
+**Plateformes cibles :** téléphones et tablettes Android récents, en portrait et paysage.
+
+**Formats d'image ciblés :** JPEG, PNG, WebP.
+
+**Formats animés ciblés :** GIF, WebP animé lorsque le décodeur le permet.
+
+**Conteneurs vidéo ciblés :** MP4, WebM, MOV compatibles avec les codecs disponibles sur l'appareil.
+
+**Formats audio ciblés :** MP3, AAC/M4A, WAV, OGG compatibles.
+
+La lecture d'un fichier sera validée sur la base de son décodage effectif, et pas uniquement de son extension.
+
+### Exclusions V1
+
+- Synchronisation cloud.
+- Lecture de médias depuis des URL.
+- Édition, suppression ou renommage des médias.
+- Export ou enregistrement de la mosaïque en vidéo.
+- Lecture permanente en arrière-plan.
+- Gestion de plusieurs bibliothèques racines simultanées.
+
+## 3. Gestion des dossiers
+
+### F-001 — Choix du dossier racine
+
+L'application utilise le sélecteur natif Android pour permettre à l'utilisateur d'autoriser l'accès à un dossier.
+
+L'URI autorisée est conservée de manière persistante lorsque le fournisseur de documents et Android le permettent.
+
+Le dossier racine peut être remplacé depuis les paramètres.
+
+### F-002 — Analyse récursive
+
+L'application parcourt tous les sous-dossiers accessibles, sans limite de profondeur arbitraire.
+
+Chaque dossier détecté est enregistré avec :
+
+- Son identifiant.
+- Son dossier parent.
+- Son nom.
+- Son URI.
+- Sa profondeur.
+- Le nombre de médias directs.
+- Le nombre total de médias dans sa descendance.
+- Son état de sélection.
+
+Les fichiers inconnus sont ignorés. Les erreurs d'accès sont journalisées sans interrompre l'ensemble du scan.
+
+### F-003 — Sélection des dossiers
+
+Chaque dossier possède trois états visuels :
+
+- **Sélectionné :** dossier inclus.
+- **Exclu :** dossier non inclus.
+- **Partiel :** une partie de ses descendants seulement est incluse.
+
+Une sélection ou exclusion sur un dossier parent s'applique à toute sa descendance.
+
+L'utilisateur peut ensuite modifier individuellement un descendant.
+
+Le contenu directement situé dans le dossier racine est présenté dans une entrée distincte, « Fichiers du dossier racine ».
+
+### F-004 — Calcul du Random Set
+
+Le Random Set est constitué de l'union des fichiers éligibles provenant des dossiers activés.
+
+Un fichier ne doit apparaître qu'une seule fois même si plusieurs dossiers parents ou descendants sélectionnés le rendent éligible.
+
+La sélection d'un dossier ne doit jamais provoquer une copie physique de ses fichiers.
+
+### F-005 — Actualisation
+
+Un bouton « Actualiser » déclenche un nouveau scan.
+
+Au démarrage, l'application vérifie si l'autorisation de lecture existe toujours.
+
+Si un fichier n'est plus accessible, son entrée est invalidée. Si l'autorisation racine a été révoquée, l'utilisateur est invité à sélectionner à nouveau un dossier.
+
+## 4. Gestion de la mosaïque
+
+### F-006 — Configuration de la grille
+
+L'utilisateur peut choisir :
+
+- 1 × 1
+- 2 × 2
+- 3 × 3
+- 4 × 4
+
+La grille 3 × 3 constitue la valeur initiale proposée.
+
+Le format des cellules est calculé automatiquement selon les dimensions de l'écran. La disposition s'adapte aux changements d'orientation.
+
+En présence de moins de fichiers que de cellules, les répétitions simultanées deviennent inévitables : l'application affiche une information explicative et applique les règles de repli prévues par le moteur de tirage.
+
+### F-007 — Cycle de chaque cellule
+
+Chaque cellule possède :
+
+- Un média courant.
+- Un état de chargement.
+- Une horloge de lecture.
+- Une durée d'affichage.
+- Un état de lecture/pause.
+- Une indication d'erreur éventuelle.
+- Une référence à un lecteur vidéo si nécessaire.
+
+Les cellules fonctionnent indépendamment.
+
+La modification de la grille reconstruit uniquement les cellules nécessaires. Les ressources vidéo des cellules supprimées sont libérées.
+
+### F-008 — Durées d'affichage
+
+**Image fixe :** 5 secondes par défaut, réglables de 1 à 120 secondes.
+
+**GIF :** 8 secondes par défaut, réglables de 1 à 120 secondes, animation répétée durant la période d'affichage.
+
+**Vidéo :** lecture complète par défaut, ou durée maximale paramétrable.
+
+En mode durée maximale, une vidéo plus longue peut être interrompue lorsqu'elle atteint le délai défini.
+
+La durée est mesurée à partir du moment où le média est effectivement prêt à être affiché, afin d'éviter de pénaliser les contenus longs à charger.
+
+### F-009 — Interactions avec une cellule
+
+Appui court : sélectionner la cellule pour le contrôle audio.
+
+Appui long : ouvrir un menu contextuel avec les actions « Média suivant », « Revoir le média », « Exclure ce fichier du cycle courant » et « Informations ».
+
+Double appui : ouvrir temporairement le média en vue agrandie, sans modifier la configuration globale du Random Set.
+
+### F-010 — Commandes globales
+
+- Lecture/pause de toutes les cellules.
+- Actualisation de toutes les cellules.
+- Passage au tirage suivant pour toutes les cellules.
+- Activation/désactivation du son global.
+- Modification de la disposition.
+- Accès aux paramètres.
+- Mode immersif masquant les barres système lorsque c'est autorisé.
+
+L'action « Média suivant » sur l'ensemble de la grille doit recalculer les médias visibles sans doublons lorsque le Random Set contient suffisamment de fichiers.
+
+## 5. Moteur aléatoire
+
+### F-011 — Mode Random pur
+
+Chaque nouvelle sélection est indépendante des sélections précédentes.
+
+Un fichier peut réapparaître avant que tous les autres aient été affichés.
+
+Le tirage se fait uniformément parmi les fichiers éligibles.
+
+Les fichiers déjà présents dans d'autres cellules sont exclus du tirage lorsque suffisamment de candidats alternatifs sont disponibles.
+
+### F-012 — Mode Shuffle
+
+Au démarrage d'une session, les médias éligibles sont mélangés.
+
+Chaque média doit être distribué une fois avant d'être redistribué dans un nouveau cycle.
+
+Les cellules partagent un moteur de distribution commun, mais disposent de leur propre rythme d'affichage.
+
+Chaque demande d'un nouveau média consomme le prochain élément de la file Shuffle.
+
+À la fin de la file, un nouveau cycle mélangé est créé.
+
+Une courte mémoire des derniers fichiers diffusés permet de réduire les répétitions aux frontières des cycles, dans la limite des fichiers disponibles.
+
+### F-013 — Changements pendant la lecture
+
+Lorsque la sélection des dossiers change, le Random Set est reconstruit.
+
+Les nouveaux tirages utilisent immédiatement la nouvelle sélection.
+
+Les médias devenus inéligibles sont remplacés à la prochaine transition de leur cellule.
+
+Le changement de mode Random/Shuffle crée une nouvelle séquence de tirages.
+
+### F-014 — Absence de médias
+
+Lorsque le Random Set est vide, le démarrage de la lecture est désactivé.
+
+L'application affiche « Aucun média disponible » et propose de retourner à la sélection.
+
+## 6. Gestion audio
+
+### F-015 — Musique de fond
+
+L'utilisateur peut choisir un fichier audio local au moyen du sélecteur Android.
+
+La musique peut être lue en boucle pendant que la mosaïque fonctionne.
+
+Le lecteur conserve la position de lecture pendant les mises en pause temporaires.
+
+### F-016 — Son des vidéos
+
+Chaque vidéo peut contenir une piste audio originale.
+
+Une seule cellule possède le statut **Audio Focus Cell**, indépendamment du nombre de vidéos affichées.
+
+Lorsque la cellule prioritaire contient une vidéo, cette vidéo peut émettre du son.
+
+Les autres vidéos fonctionnent sans sortie audio.
+
+Si la cellule prioritaire ne contient pas de vidéo, aucun son vidéo n'est émis jusqu'à la prochaine sélection éligible, à moins que le mode automatique soit activé.
+
+### F-017 — Sélection audio automatique
+
+En mode automatique, l'application choisit une vidéo active comme source sonore prioritaire.
+
+Si cette vidéo s'achève ou disparaît, la priorité peut passer à une autre vidéo active.
+
+Un mode manuel permet de verrouiller la priorité sur une cellule particulière.
+
+### F-018 — Mixage des sources
+
+Les modes disponibles sont :
+
+1. Musique seule.
+2. Audio vidéo seul.
+3. Priorité vidéo : la musique est suspendue pendant l'audio vidéo.
+4. Ducking : le volume de la musique est réduit pendant l'audio vidéo.
+5. Mixage : musique et audio vidéo sont diffusés simultanément avec volumes indépendants.
+
+### F-019 — Contrôles du volume
+
+L'application dispose de trois niveaux :
+
+- Volume général.
+- Volume de la musique.
+- Volume du son vidéo.
+
+Les volumes logiciels ne doivent pas modifier le volume système Android à l'insu de l'utilisateur.
+
+### F-020 — Interruption audio
+
+Lorsqu'une autre application prend la priorité audio, Random Media Picker doit se conformer aux règles Android de gestion de l'audio focus.
+
+Lors d'un appel ou d'une interruption, l'audio doit être suspendu ou atténué selon l'événement reçu.
+
+En V1, lorsque l'application passe à l'arrière-plan ou que l'écran se verrouille, la mosaïque et l'audio sont mis en pause.
+
+## 7. Paramètres utilisateur
+
+Les paramètres persistants incluent :
+
+| Paramètre                        | Valeur initiale            |
+| -------------------------------- | -------------------------- |
+| Disposition                      | 3 × 3                      |
+| Mode aléatoire                   | Shuffle                    |
+| Durée image                      | 5 s                        |
+| Durée GIF                        | 8 s                        |
+| Durée vidéo                      | Complète                   |
+| Affichage du média               | Contenir, sans déformation |
+| Transition                       | Fondu court                |
+| Musique de fond                  | Désactivée                 |
+| Audio vidéo                      | Activé                     |
+| Sélection audio                  | Automatique                |
+| Volume général                   | 100 %                      |
+| Volume musique                   | 70 %                       |
+| Volume vidéo                     | 100 %                      |
+| Garder l'écran allumé en lecture | Activé                     |
+| Rotation écran                   | Automatique                |
+
+Chaque changement de paramètre est automatiquement sauvegardé.
+
+## 8. Règles techniques non fonctionnelles
+
+### NF-001 — Performance
+
+L'application doit rester réactive pendant l'indexation.
+
+Les miniatures et images doivent être décodées selon la taille de la cellule plutôt qu'en résolution originale systématique.
+
+Les cellules hors écran, le cas échéant, doivent libérer leurs ressources.
+
+### NF-002 — Vidéos simultanées
+
+La prise en charge de plusieurs décodeurs vidéo matériels dépend de l'appareil.
+
+La V1 doit privilégier une expérience stable : images et GIF animés dans toutes les cellules, avec un budget limité de vidéos simultanément décodées.
+
+Lorsque le budget matériel est atteint, les cellules vidéo supplémentaires présentent une miniature statique jusqu'à leur activation ou jusqu'à la libération d'un décodeur.
+
+### NF-003 — Résilience
+
+Un fichier endommagé ne doit pas provoquer l'arrêt global de la mosaïque.
+
+Un délai maximal de chargement doit être défini afin qu'une cellule ne reste pas indéfiniment bloquée.
+
+Après une erreur, la cellule reçoit automatiquement un nouveau candidat.
+
+### NF-004 — Confidentialité
+
+Aucun fichier multimédia ne quitte l'appareil.
+
+Aucune connexion réseau n'est nécessaire au fonctionnement.
+
+Les autorisations de stockage doivent être limitées au périmètre réellement nécessaire.
+
+### NF-005 — Qualité d'interface
+
+Le lecteur doit rester lisible en portrait et paysage.
+
+Les commandes doivent respecter les zones tactiles recommandées par Android.
+
+Les interfaces doivent prendre en charge les tailles de police du système et fournir des descriptions accessibles aux lecteurs d'écran.
+
+### NF-006 — Objectifs mesurables
+
+Les objectifs de validation proposés sont :
+
+- Indexation de 10 000 fichiers sans fermeture forcée.
+- Interface interactive pendant le scan.
+- Au moins 30 minutes de lecture continue sans crash.
+- Grille 3 × 3 fluide avec images/GIF et le budget vidéo autorisé.
+- Absence de fuite mémoire croissante lors de renouvellements prolongés.
+- Sauvegarde et restauration des préférences.
+
+Ces objectifs devront être vérifiés sur de vrais appareils Android représentatifs ; ils ne constituent pas des garanties universelles de performance.
+
+---
+
+## 9. Critères de livraison
+
+Le livrable de développement devra comprendre :
+
+- Le code source du projet Android.
+- Un projet Android Studio compilable.
+- Un APK de test installable.
+- Une configuration de build reproductible.
+- Les tests unitaires et d'intégration.
+- Une documentation d'installation et d'utilisation.
+- Une liste des limitations connues.
+- Une matrice de compatibilité des appareils testés.
+- Une documentation technique des principaux modules.
+
+Le code doit être organisé de façon à permettre l'ajout ultérieur de nouveaux modes d'affichage, filtres et profils de configuration sans réécrire le cœur du moteur de tirage.
+
+## 3. Architecture logicielle recommandée
+
+L'architecture doit séparer quatre responsabilités : l'accès au stockage, la sélection aléatoire, la lecture multimédia et l'interface graphique.
+
+UI — Jetpack Compose
+
+FolderScreen · GridScreen · SettingsScreen
+
+ViewModels — StateFlow
+
+États UI · navigation · événements utilisateurs
+
+Domain — Cas d'utilisation
+
+Indexation · filtrage · Random/Shuffle · sessions
+
+Data
+
+SAF · Room · DataStore
+
+Media
+
+Media3 · Coil · Audio Mixer
+
+| Composant                | Technologie                  | Rôle                           |
+| ------------------------ | ---------------------------- | ------------------------------ |
+| Langage                  | Kotlin                       | Logique Android                |
+| UI                       | Jetpack Compose / Material 3 | Écrans, mosaïque et paramètres |
+| Asynchrone               | Coroutines / Flow            | Scan et événements             |
+| Base locale              | Room / SQLite                | Index médias et dossiers       |
+| Préférences              | DataStore                    | Réglages persistants           |
+| Accès fichiers           | Storage Access Framework     | Autorisation et navigation     |
+| Images et GIF            | Coil avec module GIF         | Décodage et rendu              |
+| Vidéos et musique        | AndroidX Media3 / ExoPlayer  | Lecture et gestion audio       |
+| Injection de dépendances | Hilt                         | Assemblage des composants      |
+| Tests                    | JUnit et Compose UI Test     | Tests automatiques             |
+
+La documentation Android recommande ExoPlayer pour les usages de lecture audio/vidéo et précise que les décodeurs doivent être libérés lorsqu'ils ne sont plus nécessaires. Coil fournit, de son côté, un module spécifique aux GIF.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://developer.android.com\&sz=32)
+
+Android Developers
+
++1
+
+
+
+### Contrainte Android sur les dossiers
+
+L'accès récursif se fera via `ACTION_OPEN_DOCUMENT_TREE` et des URI `content://`, en conservant le droit de lecture lorsque celui-ci est persistant. Sur Android 11 et versions ultérieures, certaines racines de stockage, le dossier Download lui-même et des répertoires privés Android ne peuvent pas être sélectionnés de cette manière. L'application devra expliquer ces restrictions et non chercher à les contourner.&#x20;
+
+[image](https://www.google.com/s2/favicons?domain=https://developer.android.com\&sz=32)
+
+Android Developers
+
++1
+
+
+## 4. Modèle de données
+
+Le modèle proposé repose sur six entités principales et une table de relation entre sessions et cellules.
+
+Relations principales
+
+LibraryRoot
+
+1 racine autorisée
+
+Folder
+
+0..N, hiérarchiques
+
+MediaFile
+
+0..N par dossier
+
+RandomSetSnapshot
+
+Références aux médias éligibles
+
+PlaybackSession → GridCellState
+
+Une session, plusieurs cellules actives
+
+### Schéma des entités
+
+| Entité             | Champs principaux                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `LibraryRoot`      | `id`, `treeUri`, `displayName`, `lastScanAt`, `permissionStatus`                                                 |
+| `Folder`           | `id`, `rootId`, `parentId`, `documentUri`, `name`, `depth`, `selectionOverride`                                  |
+| `MediaFile`        | `id`, `folderId`, `documentUri`, `mimeType`, `mediaType`, `durationMs`, `sizeBytes`, `lastModified`, `status`    |
+| `PlaybackSettings` | `gridRows`, `gridColumns`, `randomMode`, `imageDurationMs`, `gifDurationMs`, `videoMode`, `audioMode`, `volumes` |
+| `PlaybackSession`  | `id`, `randomSetVersion`, `mode`, `startedAt`, `status`, `shuffleEpoch`                                          |
+| `GridCellState`    | `sessionId`, `cellIndex`, `mediaId`, `playbackPositionMs`, `startedAt`, `status`, `hasAudioFocus`                |
+
+`RandomSetSnapshot` pourra être stocké sous forme d'une table de références aux `MediaFile` ou calculé en mémoire et versionné. Pour des milliers de fichiers, il faut éviter de sérialiser de très longues listes directement dans DataStore.
+
+### Règles d'intégrité
+
+- `parentId = null` pour les dossiers de premier niveau.
+- `selectionOverride` prend les valeurs `INHERIT`, `INCLUDE` ou `EXCLUDE`.
+- L'état « partiel » d'un dossier est calculé à partir de ses descendants, et non stocké comme valeur indépendante.
+- Un `documentUri` identifie un fichier ou dossier dans le contexte du fournisseur, avec un identifiant interne stable tant qu'il reste disponible.
+- Un fichier marqué inaccessible ne peut plus être proposé pour le tirage.
+- Les positions de lecture sont stockées en millisecondes, jamais en secondes flottantes.
+
+## 5. Interfaces et contrats des modules
+
+Voici les principaux contrats que le développeur doit implémenter.
+
+| Interface             | Responsabilité         | Opérations essentielles                                  |
+| --------------------- | ---------------------- | -------------------------------------------------------- |
+| `FolderRepository`    | Arborescence           | `scanTree`, `getFolders`, `updateSelection`              |
+| `MediaRepository`     | Fichiers indexés       | `getEligibleMedia`, `refresh`, `invalidateMedia`         |
+| `RandomEngine`        | Tirage                 | `initialize`, `next`, `nextBatch`, `reset`               |
+| `PlaybackCoordinator` | Synchronisation        | `start`, `pauseAll`, `resumeAll`, `replaceCell`, `stop`  |
+| `GridResourceManager` | Ressources matérielles | `acquireVideoSlot`, `releaseVideoSlot`                   |
+| `AudioCoordinator`    | Mixage                 | `setFocusCell`, `setMusicSource`, `setMode`, `setVolume` |
+| `SettingsRepository`  | Préférences            | `observeSettings`, `updateSettings`                      |
+
+### Exemple de contrat métier du moteur de tirage
+
+```
+
+enum class RandomMode {
+    PURE_RANDOM,
+    SHUFFLE
+}
+
+data class RandomSelection(
+    val mediaId: Long,
+    val cycleNumber: Long
+)
+
+interface RandomEngine {
+    suspend fun initialize(
+        eligibleMediaIds: List<Long>,
+        mode: RandomMode
+    )
+
+    suspend fun next(
+        excludedVisibleIds: Set<Long>
+    ): RandomSelection?
+
+    suspend fun nextBatch(
+        count: Int,
+        excludedVisibleIds: Set<Long>
+    ): List<RandomSelection>
+
+    suspend fun reset()
+}
+
+```
+
+Exigence de concurrence : les appels simultanés provenant de plusieurs cellules doivent être sérialisés dans le moteur de tirage (par exemple avec un `Mutex`). Cela empêche deux cellules de consommer accidentellement le même élément de la file Shuffle.
+
+La V1 utilisera un `RandomEngine` global par session, plutôt qu'un générateur distinct par cellule. C'est indispensable pour garantir l'absence de doublons en Shuffle.
+
+## 6. Écrans et navigation
+
+Écran A — Bibliothèque
+
+Sélection du dossier racine, arbre dépliable des sous-dossiers, cases de sélection hiérarchiques, compteurs, boutons Tout sélectionner / Tout exclure / Actualiser et total de fichiers du Random Set.
+
+Écran B — Mosaïque
+
+Grille dynamique avec 1, 4, 9 ou 16 cellules, commandes globales, sélection de la cellule audio, mode immersif et retour vers la bibliothèque.
+
+Écran C — Paramètres
+
+Disposition, durées, mode Random/Shuffle, politique vidéo, comportement audio, volumes, transitions et options d'affichage.
+
+Fenêtre D — Informations média
+
+Nom du fichier, chemin relatif au dossier racine, type, dimensions, durée, taille et possibilité d'exclusion temporaire.
+
+La navigation principale sera `Bibliothèque ↔ Mosaïque`, avec les paramètres accessibles depuis les deux écrans, conformément au principe de ton croquis.
+
+## 7. Critères d'acceptation et tests
+
+Les tests ci-dessous forment les conditions de validation du MVP.
+
+| ID    | Scénario                                                           | Résultat attendu                                                                       |
+| ----- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| AC-01 | Choisir un dossier autorisé contenant 5 niveaux de sous-dossiers   | Tous les niveaux accessibles sont indexés                                              |
+| AC-02 | Sélectionner un parent puis exclure un enfant                      | Les fichiers de l'enfant sont exclus                                                   |
+| AC-03 | Sélectionner à la fois un parent et son descendant                 | Aucun fichier n'est dupliqué dans le Random Set                                        |
+| AC-04 | Lancer une grille 3 × 3 avec 100 médias                            | 9 médias distincts initialement, si suffisamment de candidats valides                  |
+| AC-05 | Fin de durée d'une image                                           | Seule sa cellule change                                                                |
+| AC-06 | Mode Shuffle, ensemble de 30 médias                                | Aucun média n'est redistribué avant l'épuisement du cycle, hors défaillance de lecture |
+| AC-07 | Mode Random pur                                                    | Répétitions autorisées entre tirages                                                   |
+| AC-08 | Une cellule lit une vidéo sonore tandis qu'une autre lit une vidéo | Seule la cellule audio prioritaire émet le son vidéo                                   |
+| AC-09 | Mode Ducking avec musique et vidéo                                 | La musique baisse lorsque le son vidéo démarre, puis remonte                           |
+| AC-10 | Fichier inaccessible pendant le chargement                         | Cellule récupérée automatiquement et erreur enregistrée                                |
+| AC-11 | Retirer l'autorisation d'accès du dossier                          | Message explicite et proposition de re-sélection                                       |
+| AC-12 | Rotation portrait vers paysage                                     | Grille réorganisée sans fuite de décodeurs ni corruption                               |
+| AC-13 | Appui sur Pause globale                                            | Toutes les horloges, animations et lectures concernées sont suspendues                 |
+| AC-14 | Retour après fermeture                                             | Dossiers sélectionnés et paramètres restaurés                                          |
+| AC-15 | 10 000 fichiers indexés                                            | Scan terminé sans crash et interface réactive                                          |
+| AC-16 | Grille 4 × 4 avec plusieurs vidéos lourdes                         | Limitation automatique des vidéos actives sans crash                                   |
+
+Pour les tests de performances, utiliser au minimum un appareil Android d'entrée de gamme, un appareil intermédiaire et un appareil haut de gamme, ainsi qu'un émulateur.
+
+Les tests doivent également couvrir les cas limites : dossier vide, une seule image, fichier supprimé, SD déconnectée, URI expirée, GIF volumineux et vidéo utilisant un codec non pris en charge.
+
+## 8. Plan de développement
+
+Je recommande une progression en huit lots, avec une première validation technique des vidéos multiples avant d'investir dans l'interface définitive.
+
+1
+
+Initialisation et prototype technique
+
+3–5 j
+
+Projet Kotlin/Compose, architecture MVVM, test du SAF, validation de Media3 avec plusieurs surfaces vidéo
+
+&#x20;Application de démonstration
+
+2
+
+Bibliothèque et indexation
+
+4–7 j
+
+Accès racine, indexation récursive, Room, sélection hiérarchique, sauvegarde
+
+&#x20;Écran de gestion des dossiers
+
+3
+
+Moteur aléatoire
+
+3–5 j
+
+Random pur, Shuffle partagé, gestion des exclusions et tests unitaires
+
+&#x20;Random Set fonctionnel
+
+4
+
+Mosaïque multimédia
+
+6–10 j
+
+Compose Grid, affichage images/GIF, vidéo, temporisation indépendante, ressources limitées
+
+&#x20;Lecteur mosaïque utilisable
+
+5
+
+Audio et mixage
+
+4–7 j
+
+Musique de fond, cellule audio prioritaire, mute, ducking, volume et interruptions
+
+&#x20;Lecture audio complète
+
+6
+
+Paramètres et expérience utilisateur
+
+3–5 j
+
+Préférences, plein écran, orientation, transitions, erreurs et restauration
+
+&#x20;MVP fonctionnel
+
+7
+
+Tests et optimisation
+
+5–8 j
+
+Tests multiappareils, bibliothèques volumineuses, mémoire, décodeurs et bugs
+
+&#x20;Version candidate
+
+8
+
+Packaging et livraison
+
+2–3 j
+
+APK, tests de build, documentation et procédure de livraison
+
+&#x20;Version 1.0
+
+Estimation indicative — 1 développeur Android expérimenté
+
+# 30 à 53 jours ouvrés
+
+Environ 6 à 11 semaines à temps plein. Cette estimation ne constitue pas un devis et dépend particulièrement des résultats des tests de décodage vidéo simultané.
+
+## 9. Risques techniques prioritaires
+
+| Risque                                | Impact     | Mesure prévue                                                   |
+| ------------------------------------- | ---------- | --------------------------------------------------------------- |
+| Trop de vidéos simultanées            | Très élevé | Limitation du nombre de décodeurs, miniatures de repli          |
+| Performance de l'indexation SAF       | Élevé      | Scan asynchrone, index Room, requêtes groupées lorsque possible |
+| GIF volumineux                        | Élevé      | Décodage dimensionné, cache contrôlé                            |
+| Mélange de plusieurs pistes audio     | Moyen      | Une seule vidéo sonore et un coordinateur audio centralisé      |
+| Différences de codecs entre appareils | Moyen      | Détection d'échec et remplacement automatique                   |
+| Perte des autorisations de stockage   | Moyen      | Vérification des permissions et sélection alternative           |
+| Rotation / cycle de vie Android       | Moyen      | Conservation de l'état de session et libération des ressources  |
+
+Le principal compromis du produit concerne les vidéos : afficher 16 médias dans une mosaïque ne signifie pas que 16 vidéos haute résolution pourront être décodées simultanément sur tous les appareils Android. L'application doit pouvoir limiter le nombre de vidéos réellement animées, sans dégrader la stabilité.
+
+## 10. Priorités de validation
+
+Avant de considérer le cahier des charges comme figé pour la réalisation, trois choix méritent une validation en prototype :
+
+- Lecture des vidéos : privilégier deux vidéos simultanément actives au départ, avec un plafond adaptatif suivant les capacités du téléphone.
+- Renouvellement des cellules : indépendant par défaut, plutôt qu'une actualisation intégrale de la grille à chaque intervalle.
+- Gestion audio : une vidéo sonore prioritaire, avec choix manuel de la cellule, et musique de fond optionnelle.
+
+Ces choix sont déjà incorporés dans la spécification et permettent de démarrer sans attendre de nouvelles décisions.
+
+### Références techniques officielles
+
+- [Android — Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files?utm_source=chatgpt.com)
+- [Android — Media3 et ExoPlayer](https://developer.android.com/media/implement/playback-app?utm_source=chatgpt.com)
+- [Android — Gestion de l'audio focus](https://developer.android.com/media/optimize/audio-focus?utm_source=chatgpt.com)
+- [Coil — GIF et images animées](https://coil-kt.github.io/coil/gifs/?utm_source=chatgpt.com)
+
+Conclusion : cette V1.0 du cahier des charges établit les comportements attendus, les contraintes Android, l'architecture recommandée, les interfaces logicielles, le modèle de données, les critères de recette et l'ordre de développement. Elle constitue une base directement exploitable pour créer les tickets techniques et commencer le prototype Android.
