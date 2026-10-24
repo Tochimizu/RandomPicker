@@ -1,5 +1,19 @@
 # Validation
 
+## Résultats du 24 octobre 2026 — commandes, musique et navigation
+
+Vérification locale sous Windows avec JDK 21, SDK 35 et Gradle 8.11.1, en mode hors ligne :
+
+| Vérification | Résultat |
+| --- | --- |
+| `:app:assembleDebug` | Réussie ; nouvel APK dans `app/build/outputs/apk/debug/app-debug.apk` |
+| `:app:testDebugUnitTest` | 32 tests réussis, 0 échec, dont les 9 nouveaux tests de `NavigationHistoryTest` |
+| `:app:lintDebug` | 0 erreur, 8 avertissements, 2 informations ; analyse hors ligne |
+| `:app:assembleDebugAndroidTest` | Réussie, avec les nouvelles suites `PlaybackInteractionTest` et `PlaybackNavigationTest` |
+| Exécution des tests Android et recette mémoire | Non exécutées : aucun appareil ou émulateur connecté |
+
+La passe finale utilise `-Pkotlin.compiler.execution.strategy=in-process` pour contourner un refus d'accès au démon Kotlin sous Windows, ainsi que `--offline --max-workers=2`. `ANDROID_USER_HOME` pointe vers `.tools/android-user` et le cache Gradle utilisé est celui référencé par `.tools/gradle-cache-path.txt`. Le journal local est `.tools/build-navigation-final.log`. La comparaison du nombre d'avertissements de dépendances avec une analyse en ligne n'est pas significative.
+
 ## Résultats du 22 octobre 2026
 
 Vérification locale sous Windows avec JDK 21, SDK 35, Build Tools 35.0.0 et Gradle 8.11.1 :
@@ -36,6 +50,28 @@ Les tests Android couvrent la sélection et l’invalidation dans Room, la dédu
 ```
 
 Rapports : `app/build/reports/tests/testDebugUnitTest/index.html`, `app/build/reports/lint-results-debug.html` et `app/build/reports/androidTests/connected/`.
+
+## Recette des nouvelles exigences — validation sur appareil restante
+
+Les exigences F-003, F-010, F-010a et F-015 sont implémentées pour les commandes, le son de fond et les swipes. Les résultats du 22 octobre ci-dessus ne couvrent pas ces ajouts. Tous les scénarios manuels suivants ont le statut **Non exécuté sur appareil** et correspondent aux critères AC-17 à AC-23 du cahier des charges.
+
+| Scénario | Résultat attendu |
+| --- | --- |
+| Ouvrir le menu dans la mosaïque, en mode immersif puis dans une image agrandie, en portrait et paysage | Stop, Next, Reload et Son restent accessibles sans quitter la vue, y compris avec TalkBack et grande police ; un accès visible rappelle le menu masqué |
+| Utiliser Stop pendant une image, une animation et une vidéo avec musique de fond | Horloges, animations, vidéos et musique suspendues ; affichage et historique conservés ; reprise uniquement sur action explicite |
+| Utiliser Next, Reload et Son depuis chaque vue | Next agit sur la mosaïque ou la cellule agrandie selon la vue ; Reload recommence le cycle global, rétablit les exclusions et vide l'historique sans scanner les dossiers ; Son coupe/réactive les sources sans perdre les volumes |
+| Choisir, remplacer puis retirer un fichier audio depuis la sélection des dossiers | Fichier affiché et choix partagé avec les paramètres ; absence de son compatible avec le lancement de la mosaïque |
+| Annuler le sélecteur audio, puis fermer et rouvrir l'application | Annulation sans modification ; choix musical sauvegardé et restauré si l'URI reste accessible |
+| Suspendre les transitions automatiques puis swiper à droite et à gauche dans la grille | Mosaïque suivante puis mosaïque précédente avec les mêmes médias et la même disposition ; aucun nouveau tirage pour restaurer un état |
+| Agrandir une image, swiper à droite puis à gauche avec les transitions automatiques suspendues | Média suivant puis précédent de cette cellule, sans fermer la vue agrandie ni renouveler les autres cellules par le geste |
+| Laisser passer une transition automatique, puis revenir en arrière dans chaque contexte | État précédent accessible ; transitions du contexte consulté suspendues tant qu'il est dans le passé |
+| Revenir plusieurs fois en arrière puis swiper à droite | États plus récents restitués dans l'ordre avant un nouveau tirage ; aucune consommation Shuffle pendant les restaurations ; Stop reste prioritaire au retour au présent |
+| Dépasser 10 transitions puis remonter l'historique ; répéter avec la capacité de 5 sur appareil à mémoire réduite | Au plus 10 ou 5 retours par contexte ; entrées anciennes évincées ; swipe supplémentaire à gauche sans changement, avec indication de la limite |
+| Changer de racine, sélection de dossiers, grille ou mode, puis utiliser Reload ; faire aussi une rotation | Historiques concernés réinitialisés lors des changements et du Reload ; historique conservé lors de la rotation |
+| Supprimer ou exclure un fichier présent dans l'historique, puis tenter de le restaurer | Entrée ignorée avec information, sans crash ni réintroduction d'un média exclu |
+| Enchaîner plusieurs centaines de swipes et retours avec images lourdes, GIF et vidéos, puis prolonger la session 30 minutes | Nombre d'entrées borné ; aucun bitmap, drawable, lecteur ou tampon retenu par l'historique ; budget de décodeurs respecté et absence de croissance mémoire continue à vérifier dans Android Studio Profiler |
+
+`NavigationHistoryTest` couvre le bornage à 5 et 10 retours sur 1 000 états, le curseur arrière/avant, l'éviction, les réinitialisations, le filtrage des entrées invalides, les exclusions et l'absence de consommation Shuffle pendant les restaurations. `PlaybackInteractionTest` ajoute des tests Compose pour les commandes partagées, le sens des gestes, l'absence d'appui déclenché par un swipe et le composant musical partagé. `PlaybackNavigationTest` couvre le coordinateur : restauration des mosaïques, portée de la navigation en vue agrandie, Stop, historique borné, réinitialisation et callbacks obsolètes. Ces deux suites Android nécessitent encore une exécution sur appareil ou émulateur ; leur compilation ne valide pas les parcours réels.
 
 ## Matrice des appareils
 

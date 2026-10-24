@@ -1,0 +1,36 @@
+# Gradle, Kotlin and local development tools
+.gradle/
+.kotlin/
+.tools/
+**/build/
+.externalNativeBuild/
+.cxx/
+
+# Machine-specific configuration and IDE files
+local.properties
+.idea/
+*.iml
+.vscode/
+captures/
+
+# Build artifacts (keep the Gradle wrapper JAR and Room schemas tracked)
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Signing credentials and local environment variables
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+.env
+.env.*
+!.env.example
+
+# Logs and operating system files
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini

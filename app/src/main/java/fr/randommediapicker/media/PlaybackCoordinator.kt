@@ -35,6 +35,15 @@ class PlaybackCoordinator(
     private val transitions = Mutex()
     private val resources = GridResourceManager(context)
     val videoBudget get() = resources.videoBudget
+    val historyBackLimit get() = resources.historyBackLimit
+    private val gridHistory = NavigationHistory<List<String?>>(resources.historyBackLimit)
+    private val cellHistories = mutableMapOf<Int, NavigationHistory<String>>()
+    private val _historyPaused = MutableStateFlow<Set<Int>>(emptySet())
+    val historyPaused = _historyPaused.asStateFlow()
+    private val _enlarged = MutableStateFlow<Int?>(null)
+    val enlarged = _enlarged.asStateFlow()
+    private val _navigationNotice = MutableStateFlow<String?>(null)
+    val navigationNotice = _navigationNotice.asStateFlow()
     private val _cells = MutableStateFlow<List<GridCellState>>(emptyList())
     val cells = _cells.asStateFlow()
     private val _running = MutableStateFlow(false)
@@ -76,6 +85,7 @@ class PlaybackCoordinator(
                 val failed = mutableListOf<GridCellState>()
                 _cells.value = _cells.value.map { cell ->
                     if (cell.media == null) return@map cell
+                    if (cell.index in _historyPaused.value) return@map cell
                     if (!cell.ready) {
                         val next = cell.copy(loadingMs = cell.loadingMs + delta)
                         if (next.loadingMs >= 20_000) failed.add(next)
@@ -110,11 +120,16 @@ class PlaybackCoordinator(
         // Invalidation removes the URI from Room's accessible flow; a later scan may retry it.
         failed.retainAll(files.map { it.id }.toSet())
         eligible = files.filterNot { it.id in failed }
-        if (old != eligible.map { it.id }) engine.initialize(eligible.map { it.id }, settings.randomMode)
+        if (old != eligible.map { it.id }) {
+            engine.initialize(eligible.map { it.id }, settings.randomMode)
+            resetHistoryLocked()
+        }
         if (eligible.isEmpty()) {
             _cells.value = emptyList()
+            resetHistoryLocked()
             reconcileVideos()
         } else if (_cells.value.isEmpty() && visible) resizeLocked()
+        syncPlayback()
     }
 
     suspend fun updateSettings(value: PlaybackSettings) = transitions.withLock {
@@ -122,6 +137,8 @@ class PlaybackCoordinator(
         settings = value
         if (old.randomMode != value.randomMode) engine.initialize(eligible.map { it.id }, value.randomMode)
         if (old.gridSize != value.gridSize || (_cells.value.isEmpty() && visible && eligible.isNotEmpty())) resizeLocked()
+        if (old.gridSize != value.gridSize || old.randomMode != value.randomMode) resetHistoryLocked()
+        if ((_enlarged.value ?: 0) >= value.gridSize * value.gridSize) _enlarged.value = null
         reconcileVideos()
     }
 
@@ -136,6 +153,11 @@ class PlaybackCoordinator(
         if (_playing.value) focusBlocked = false
         syncPlayback()
     }
+    fun stop() { _playing.value = false; syncPlayback() }
+    fun setEnlarged(index: Int?) {
+        _enlarged.value = index?.takeIf { it in _cells.value.indices }
+        syncPlayback()
+    }
     fun toggleMute() { _muted.value = !_muted.value; syncPlayback() }
     fun selectFocus(index: Int) { _focus.value = index; reconcileVideos() }
     fun player(index: Int): ExoPlayer? = players[index]
@@ -148,41 +170,101 @@ class PlaybackCoordinator(
             current.add(newCell(current.size, pick?.mediaId))
         }
         _cells.value = current
+        recordHistoryLocked()
         if (_focus.value >= count) _focus.value = 0
         reconcileVideos()
     }
 
     private fun newCell(index: Int, id: String?) = GridCellState(index, eligible.firstOrNull { it.id == id }, ++generation)
 
+    private fun snapshot() = _cells.value.map { it.media?.id }
+
+    private fun recordHistoryLocked(skipGrid: Boolean = false, skipCell: Int? = null) {
+        if (!skipGrid && _cells.value.isNotEmpty()) gridHistory.record(snapshot())
+        _cells.value.forEach { cell ->
+            if (cell.index != skipCell) cell.media?.id?.let { id ->
+                cellHistories.getOrPut(cell.index) { NavigationHistory(resources.historyBackLimit) }.record(id)
+            }
+        }
+    }
+
+    private fun resetHistoryLocked() {
+        gridHistory.clear()
+        cellHistories.clear()
+        _navigationNotice.value = null
+        recordHistoryLocked()
+    }
+
+    fun resetNavigation() = scope.launch {
+        transitions.withLock { resetHistoryLocked(); syncPlayback() }
+    }
+
+    /** The same entry point is used by Next, accessibility actions and right swipes. */
+    fun navigate(forward: Boolean, index: Int? = null) = scope.launch {
+        transitions.withLock {
+            if (_cells.value.isEmpty()) return@withLock
+            _navigationNotice.value = null
+            val allowed = engine.restorableIds()
+            if (index == null) {
+                val move = gridHistory.move(forward) { state ->
+                    state.size == settings.gridSize * settings.gridSize && state.all { it == null || it in allowed }
+                }
+                if (move.value != null) {
+                    _cells.value = move.value.mapIndexed { i, id -> newCell(i, id) }
+                    recordHistoryLocked(skipGrid = true)
+                } else if (forward) {
+                    val picks = engine.nextBatch(settings.gridSize * settings.gridSize)
+                    _cells.value = picks.mapIndexed { i, pick -> newCell(i, pick.mediaId) }
+                    recordHistoryLocked()
+                } else _navigationNotice.value = "Aucun état antérieur disponible (maximum $historyBackLimit retours)."
+                if (move.skipped > 0) _navigationNotice.value = "État inaccessible ou exclu ignoré."
+            } else {
+                if (index !in _cells.value.indices) return@withLock
+                val history = cellHistories.getOrPut(index) { NavigationHistory(resources.historyBackLimit) }
+                val move = history.move(forward) { it in allowed }
+                if (move.value != null) {
+                    _cells.value = _cells.value.map { if (it.index == index) newCell(index, move.value) else it }
+                    recordHistoryLocked(skipCell = index)
+                } else if (forward) replaceCellLocked(index)
+                else _navigationNotice.value = "Aucun média antérieur disponible (maximum $historyBackLimit retours)."
+                if (move.skipped > 0) _navigationNotice.value = "Média inaccessible ou exclu ignoré."
+            }
+            reconcileVideos()
+        }
+    }
+
+    private suspend fun replaceCellLocked(index: Int) {
+        val visibleIds = _cells.value.filter { it.index != index }.mapNotNull { it.media?.id }.toSet()
+        val pick = engine.next(visibleIds)
+        _cells.value = _cells.value.map { if (it.index == index) newCell(index, pick?.mediaId) else it }
+        recordHistoryLocked()
+    }
+
     fun next(index: Int, token: Long? = null) {
+        if (token == null) { navigate(true, index); return }
         if (!replacing.add(index)) return
         scope.launch {
             try {
+                // Media3 may call back while syncPlayback is iterating the player map.
+                yield()
                 transitions.withLock {
                     val old = _cells.value.getOrNull(index) ?: return@withLock
-                    if (token != null && old.token != token) return@withLock
-                    val visible = _cells.value.filter { it.index != index }.mapNotNull { it.media?.id }.toSet()
-                    val pick = engine.next(visible)
-                    _cells.value = _cells.value.map { if (it.index == index) newCell(index, pick?.mediaId) else it }
+                    if (old.token != token || !_running.value || index in _historyPaused.value) return@withLock
+                    replaceCellLocked(index)
                     reconcileVideos()
                 }
             } finally { replacing.remove(index) }
         }
     }
 
-    fun nextAll() = scope.launch {
-        transitions.withLock {
-            val picks = engine.nextBatch(settings.gridSize * settings.gridSize)
-            _cells.value = picks.mapIndexed { index, pick -> newCell(index, pick.mediaId) }
-            reconcileVideos()
-        }
-    }
+    fun nextAll() = navigate(true)
 
     fun restartCycle() = scope.launch {
         transitions.withLock {
             engine.reset()
             val picks = engine.nextBatch(settings.gridSize * settings.gridSize)
             _cells.value = picks.mapIndexed { index, pick -> newCell(index, pick.mediaId) }
+            resetHistoryLocked()
             reconcileVideos()
         }
     }
@@ -200,8 +282,9 @@ class PlaybackCoordinator(
     fun excludeMedia(id: String) = scope.launch {
         transitions.withLock {
             engine.excludeForCurrentCycle(id)
+            _cells.value.filter { it.media?.id == id }.forEach { replaceCellLocked(it.index) }
+            reconcileVideos()
         }
-        _cells.value.filter { it.media?.id == id }.forEach { next(it.index) }
         message("Fichier exclu du cycle courant.")
     }
 
@@ -218,11 +301,12 @@ class PlaybackCoordinator(
         scope.launch {
             transitions.withLock {
                 eligible = eligible.filterNot { it.id == id }
-                engine.initialize(eligible.map { it.id }, settings.randomMode)
+                engine.removeUnavailable(id)
+                _cells.value.filter { it.media?.id == id }.forEach { replaceCellLocked(it.index) }
+                reconcileVideos()
             }
             invalidate(id)
             message("Fichier ignoré : ${cell.media.name}")
-            _cells.value.filter { it.media?.id == id }.forEach { next(it.index, it.token) }
         }
     }
 
@@ -266,6 +350,9 @@ class PlaybackCoordinator(
     }
 
     private fun syncPlayback() {
+        _historyPaused.value = if (gridHistory.isPast) _cells.value.indices.toSet() else {
+            _enlarged.value?.takeIf { cellHistories[it]?.isPast == true }?.let { setOf(it) } ?: emptySet()
+        }
         if (settings.automaticAudio) {
             val current = players[_focus.value]
             if (current == null || current.playbackState == Player.STATE_ENDED) {
@@ -274,7 +361,8 @@ class PlaybackCoordinator(
         }
         val focusedPlayer = players[_focus.value]
         val hasVideo = focusedPlayer?.let {
-            it.playbackState == Player.STATE_READY && it.currentTracks.groups.any { group -> group.type == C.TRACK_TYPE_AUDIO && group.isSelected }
+            _focus.value !in _historyPaused.value && it.playbackState == Player.STATE_READY &&
+                it.currentTracks.groups.any { group -> group.type == C.TRACK_TYPE_AUDIO && group.isSelected }
         } == true
         val levels = AudioPolicy.levels(settings, hasVideo, _muted.value, duck)
         val wantsPlayback = _playing.value && foreground && visible && _cells.value.any { it.media != null }
@@ -287,13 +375,18 @@ class PlaybackCoordinator(
         _running.value = wantsPlayback && !focusBlocked && focusGranted
         players.forEach { (index, player) ->
             player.volume = if (index == _focus.value && _running.value) levels.video else 0f
-            player.playWhenReady = _running.value
+            player.playWhenReady = _running.value && index !in _historyPaused.value
+            if (player.playWhenReady && player.playbackState == Player.STATE_ENDED) {
+                _cells.value.getOrNull(index)?.let { next(index, it.token) }
+            }
         }
     }
 
     fun release() {
         players.values.forEach { it.release() }
         players.clear()
+        gridHistory.clear()
+        cellHistories.clear()
         audio.release()
     }
 }

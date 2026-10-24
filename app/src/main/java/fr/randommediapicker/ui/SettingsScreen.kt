@@ -17,7 +17,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(
     settings: PlaybackSettings, update: ((PlaybackSettings) -> PlaybackSettings) -> Unit,
-    chooseMusic: () -> Unit, chooseRoot: () -> Unit,
+    chooseMusic: () -> Unit, chooseRoot: () -> Unit, removeMusic: () -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item { Text("Les changements sont enregistrés automatiquement.", style = MaterialTheme.typography.bodySmall) }
@@ -60,13 +60,7 @@ fun SettingsScreen(
         )) { value -> update { it.copy(audioMode = value) } } }
         item { Text("Priorité vidéo suspend la musique. Ducking réduit son volume à 20 % pendant le son vidéo. Mixage conserve les deux volumes.", style = MaterialTheme.typography.bodySmall) }
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = chooseMusic) { Text(if (settings.musicUri == null) "Choisir une musique locale" else "Changer de musique") }
-                if (settings.musicUri != null) {
-                    SettingSwitch("Musique en boucle", "La position est conservée pendant les pauses", settings.musicEnabled) { value -> update { it.copy(musicEnabled = value) } }
-                    TextButton(onClick = { update { it.copy(musicUri = null, musicEnabled = false) } }) { Text("Retirer la musique") }
-                }
-            }
+            MusicSelection(settings, chooseMusic, removeMusic) { value -> update { it.copy(musicEnabled = value) } }
         }
         item { SettingSlider("Volume général", settings.masterVolume, 0f..1f, "${(settings.masterVolume * 100).roundToInt()} %") { value -> update { it.copy(masterVolume = value) } } }
         item { SettingSlider("Volume musique", settings.musicVolume, 0f..1f, "${(settings.musicVolume * 100).roundToInt()} %") { value -> update { it.copy(musicVolume = value) } } }

@@ -48,7 +48,10 @@ class PickerViewModel(application: Application) : AndroidViewModel(application) 
             }.flowOn(Dispatchers.Default).distinctUntilChanged().collect { playback.updateLibrary(it) }
         }
         viewModelScope.launch {
-            repository.root.collect { root -> permissionLost.value = root != null && !repository.hasPermission(root.treeUri) }
+            repository.root.map { it?.treeUri }.distinctUntilChanged().collect { treeUri ->
+                permissionLost.value = treeUri != null && !repository.hasPermission(treeUri)
+                playback.resetNavigation()
+            }
         }
     }
 
@@ -97,19 +100,33 @@ class PickerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectFolder(id: String?, include: Boolean) = viewModelScope.launch {
-        runCatching { repository.select(id, include) }.onFailure { notify("Sélection non enregistrée : ${it.message}") }
+        runCatching { repository.select(id, include); playback.resetNavigation().join() }
+            .onFailure { notify("Sélection non enregistrée : ${it.message}") }
     }
 
     fun updateSettings(transform: (PlaybackSettings) -> PlaybackSettings) = viewModelScope.launch {
         runCatching { app.settings.update(transform) }.onFailure { notify("Réglage non enregistré : ${it.message}") }
     }
 
-    fun chooseMusic(uri: Uri) {
+    fun chooseMusic(uri: Uri) { viewModelScope.launch {
         try {
+            val previous = settings.value.musicUri
             app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            updateSettings { it.copy(musicUri = uri.toString(), musicEnabled = true,
+            app.settings.update { it.copy(musicUri = uri.toString(), musicEnabled = true,
                 audioMode = if (it.audioMode == AudioMode.VIDEO_ONLY) AudioMode.DUCKING else it.audioMode) }
+            if (previous != uri.toString()) releaseMusicPermission(previous)
         } catch (error: Exception) { notify("Impossible de conserver l’accès à ce fichier audio.") }
+    } }
+
+    fun removeMusic() { viewModelScope.launch {
+        val previous = settings.value.musicUri
+        runCatching { app.settings.update { it.copy(musicUri = null, musicEnabled = false) } }
+            .onSuccess { releaseMusicPermission(previous) }
+            .onFailure { notify("Musique non retirée : ${it.message}") }
+    } }
+
+    private fun releaseMusicPermission(uri: String?) {
+        uri?.let { runCatching { app.contentResolver.releasePersistableUriPermission(Uri.parse(it), Intent.FLAG_GRANT_READ_URI_PERMISSION) } }
     }
 
     override fun onCleared() { playback.release(); super.onCleared() }

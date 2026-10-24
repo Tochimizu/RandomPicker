@@ -53,15 +53,26 @@ Le script ajoute les changements du projet, crée le commit puis pousse la branc
 ## Utilisation
 
 1. Dans **Bibliothèque**, choisir un dossier local avec le sélecteur Android. Le scan inclut tous les sous-dossiers accessibles et conserve l’interface réactive.
-2. Déplier les dossiers et cocher ceux à inclure. Cocher un parent applique son choix à ses descendants ; une modification ultérieure d’un enfant reste possible. Les fichiers directement dans la racine ont leur propre entrée.
+2. Déplier les dossiers et cocher ceux à inclure. Cocher un parent applique son choix à ses descendants ; une modification ultérieure d’un enfant reste possible. Les fichiers directement dans la racine ont leur propre entrée. Choisir éventuellement un **son de fond** dans la Bibliothèque ; son nom est affiché et il peut être remplacé ou retiré. Le choix est partagé avec les paramètres.
 3. Lancer la **Mosaïque**. Les cellules renouvellent leur contenu indépendamment, avec une grille de 1 × 1 à 4 × 4. Les durées commencent lorsque le média est prêt.
 4. Un appui simple sur une image ou une animation l’ouvre en plein écran, avec les barres système masquées. Un nouvel appui sur l’image, la croix ou le bouton Retour revient à la mosaïque. L’appui court choisit aussi la cellule audio ; pour les vidéos, le double appui ouvre la vue agrandie. Un appui long propose Suivant, Revoir, Exclure temporairement et Informations.
-5. Les commandes permettent de mettre en pause, tirer de nouveaux médias pour toute la grille, recommencer le cycle, couper le son, modifier la grille et passer en mode immersif. Recommencer rétablit les exclusions temporaires ; en Shuffle, elles sont aussi rétablies au cycle suivant.
+5. Les commandes **Stop / Précédent / Next / Reload / Son** restent accessibles dans la mosaïque, en mode immersif et dans la vue agrandie. Stop suspend la lecture et affiche la commande de reprise ; Next avance dans la vue active ; Reload recommence le cycle global et rétablit les exclusions temporaires ; Son coupe ou réactive toutes les sources. La barre de la mosaïque permet aussi de modifier la grille et de passer en mode immersif.
 6. Dans **Paramètres**, régler Shuffle/Random, durées de 1 à 120 secondes, lecture vidéo complète ou limitée, cadrage, transitions, musique locale en boucle, mixage, volumes, rotation et thème.
 
 Une seule vidéo peut émettre le son. Le mode automatique choisit une vidéo active ; désactiver cette option pour verrouiller la cellule choisie. Les modes Musique seule, Vidéo seule, Priorité vidéo, Ducking et Mixage sont disponibles. Le volume système Android n’est pas modifié.
 
 La mosaïque, les animations et le son se mettent en pause lorsque l’application perd le premier plan, lorsque l’écran se verrouille ou pendant la navigation hors du lecteur. Le choix des dossiers et les réglages sont restaurés après fermeture ; la session de lecture est conservée lors d’une rotation.
+
+## Navigation par swipe et historique
+
+Les interactions suivantes sont implémentées (F-003, F-010, F-010a et F-015) ; leur recette sur appareil reste à effectuer :
+
+- Un menu **Stop / Next / Reload / Son** accessible dans la mosaïque, en mode immersif et dans l'image agrandie. Stop suspend la lecture et l'audio ; Next avance dans la vue active ; Reload recommence le cycle global et vide l'historique ; Son coupe ou réactive toutes les sources.
+- Le choix facultatif d'un **son de fond directement dans la sélection des dossiers**, avec remplacement et retrait, partagé avec les paramètres.
+- Un **swipe vers la droite pour avancer**, vers la gauche pour revenir : mosaïque suivante/précédente dans la grille, média suivant/précédent de la cellule dans l'image agrandie, en restant dans cette vue. Après un retour, avancer restitue d'abord les états déjà visités.
+- Un historique limité à **10 retours par contexte**, réduit à **5 sur les appareils à mémoire limitée**, conservant uniquement des références et métadonnées. À la limite, le retour ne change plus l'affichage. La consultation du passé suspend les transitions automatiques du contexte consulté ; Stop empêche leur reprise automatique.
+
+Les commandes restent visibles. Le bouton **Précédent** fournit une alternative au swipe. Un changement de dossiers, de grille ou de mode, ainsi que Reload, réinitialise l'historique ; une rotation le conserve. La recette est détaillée dans [`docs/validation.md`](docs/validation.md).
 
 ## Confidentialité et accès
 

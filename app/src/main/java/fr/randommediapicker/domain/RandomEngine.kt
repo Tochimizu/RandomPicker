@@ -22,6 +22,7 @@ class SessionRandomEngine(private val random: Random = Random.Default) : RandomE
     private var epoch = 0L
     private val recent = ArrayDeque<String>()
     private val randomExclusions = mutableSetOf<String>()
+    private val cycleExclusions = mutableSetOf<String>()
 
     override suspend fun initialize(eligibleMediaIds: List<String>, mode: RandomMode) = mutex.withLock {
         ids = eligibleMediaIds.distinct()
@@ -29,6 +30,7 @@ class SessionRandomEngine(private val random: Random = Random.Default) : RandomE
         queue.clear()
         recent.clear()
         randomExclusions.clear()
+        cycleExclusions.clear()
         epoch = 0
         // Start the cycle now so an exclusion made immediately after a mode change
         // can remove an item before the first subsequent cell transition.
@@ -47,6 +49,7 @@ class SessionRandomEngine(private val random: Random = Random.Default) : RandomE
             (alternatives.ifEmpty { pool }).random(random)
         } else {
             if (queue.isEmpty()) {
+                cycleExclusions.clear()
                 epoch++
                 queue = ids.shuffled(random).toMutableList()
                 // Favor files absent from the preceding boundary, without dropping entries.
@@ -79,10 +82,25 @@ class SessionRandomEngine(private val random: Random = Random.Default) : RandomE
 
     /** In Random mode there is no natural epoch; Reset explicitly starts the next cycle. */
     suspend fun excludeForCurrentCycle(id: String) = mutex.withLock {
+        cycleExclusions.add(id)
         if (mode == RandomMode.SHUFFLE) queue.removeAll { it == id }
         else randomExclusions.add(id)
         Unit
     }
 
-    override suspend fun reset() = mutex.withLock { queue.clear(); recent.clear(); randomExclusions.clear(); epoch = 0L }
+    suspend fun restorableIds(): Set<String> = mutex.withLock { ids.toSet() - cycleExclusions }
+
+    /** A read failure must not reset the exclusions or the remaining shuffle sequence. */
+    suspend fun removeUnavailable(id: String) = mutex.withLock {
+        ids = ids.filterNot { it == id }
+        queue.removeAll { it == id }
+        recent.removeAll { it == id }
+        randomExclusions.remove(id)
+        cycleExclusions.remove(id)
+        Unit
+    }
+
+    override suspend fun reset() = mutex.withLock {
+        queue.clear(); recent.clear(); randomExclusions.clear(); cycleExclusions.clear(); epoch = 0L
+    }
 }

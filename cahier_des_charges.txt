@@ -165,6 +165,8 @@ L'utilisateur peut ensuite modifier individuellement un descendant.
 
 Le contenu directement situé dans le dossier racine est présenté dans une entrée distincte, « Fichiers du dossier racine ».
 
+Le menu de sélection des dossiers doit aussi proposer « Choisir un son de fond », afficher le fichier audio sélectionné et permettre de le remplacer ou de le retirer avant de lancer la mosaïque. Ce choix utilise les mêmes préférences que la musique de fond des paramètres (F-015).
+
 ### F-004 — Calcul du Random Set
 
 Le Random Set est constitué de l'union des fichiers éligibles provenant des dossiers activés.
@@ -246,6 +248,34 @@ Double appui : ouvrir temporairement le média en vue agrandie, sans modifier la
 
 L'action « Média suivant » sur l'ensemble de la grille doit recalculer les médias visibles sans doublons lorsque le Random Set contient suffisamment de fichiers.
 
+Le menu « Stop, Next, Reload, Son » doit rester accessible dans la mosaïque, en mode immersif et dans la vue agrandie d'une image, sans devoir retourner à la bibliothèque ni quitter la vue agrandie. Si les commandes sont masquées, un bouton visible et accessible doit permettre de les afficher.
+
+- **Stop :** suspendre les horloges, animations, vidéos et musique de fond, en conservant l'affichage courant et l'historique ; la reprise nécessite une action explicite de l'utilisateur.
+- **Next / Suivant :** afficher la mosaïque suivante dans la grille, ou uniquement le média suivant de la cellule agrandie lorsque l'utilisateur consulte une image en grand.
+- **Reload / Recommencer le cycle :** relancer le cycle de tirage de toute la mosaïque et rétablir les exclusions temporaires. Cette action réinitialise l'historique de navigation ; elle ne relance pas le scan des dossiers (« Actualiser »).
+- **Son :** couper ou réactiver le son global, musique de fond et son vidéo compris, en conservant les niveaux de volume choisis.
+
+### F-010a — Navigation par swipe et historique borné
+
+Le sens du geste correspond au déplacement du doigt sur l'écran :
+
+| Vue active | Swipe vers la droite | Swipe vers la gauche |
+| --- | --- | --- |
+| Mosaïque | Afficher la mosaïque suivante | Restaurer la mosaïque précédente, avec ses médias et leur disposition |
+| Image agrandie (« zoom ») | Afficher le média suivant de la cellule agrandie en restant dans cette vue | Restaurer le média précédent de cette cellule en restant dans cette vue |
+
+Les autres cellules ne doivent pas être renouvelées par la navigation dans l'image agrandie. Le bouton Next et le swipe vers la droite suivent les mêmes règles.
+
+L'historique conserve les états affichés avant les changements automatiques ou manuels, selon le contexte : mosaïque complète ou média de la cellule agrandie. Après un retour arrière, avancer restitue d'abord les états plus récents encore présents dans l'historique, avant de demander un nouveau tirage. Relire un état ne consomme pas une nouvelle entrée Shuffle.
+
+Pendant la consultation d'un état passé, les transitions automatiques du contexte consulté sont suspendues pour permettre de le regarder. Elles reprennent au retour à l'état le plus récent si la lecture était active ; Stop reste prioritaire.
+
+L'historique est limité à **10 retours arrière par contexte**, ou **5 sur les appareils à mémoire réduite**. Au-delà, les entrées les plus anciennes sont supprimées. À la limite de l'historique, un swipe à gauche conserve l'état affiché et indique qu'aucun état antérieur n'est disponible, sans boucler ni effectuer un nouveau tirage.
+
+Seuls les identifiants/URI et les métadonnées nécessaires à la restauration sont conservés ; aucun bitmap, GIF décodé, lecteur vidéo ou tampon audio n'est retenu pour les entrées historiques. Les médias sont rechargés à la demande avec le budget de ressources habituel. L'historique reste en mémoire pendant la session et la rotation, sans restauration après arrêt du processus.
+
+Un changement de racine, de sélection de dossiers, de disposition, de mode Random/Shuffle ou un Reload réinitialise les historiques concernés. Une entrée devenue inaccessible ou exclue ne doit pas être restaurée ; elle est ignorée avec une information à l'utilisateur. Les gestes doivent être distingués des appuis et ne pas empêcher l'accès au menu de commandes.
+
 ## 5. Moteur aléatoire
 
 ### F-011 — Mode Random pur
@@ -293,6 +323,8 @@ L'application affiche « Aucun média disponible » et propose de retourner à l
 ### F-015 — Musique de fond
 
 L'utilisateur peut choisir un fichier audio local au moyen du sélecteur Android.
+
+Ce sélecteur est accessible directement depuis le menu de sélection des dossiers (Bibliothèque), ainsi que depuis les paramètres. Le fichier choisi, son remplacement et son retrait sont partagés entre ces deux écrans et sauvegardés. Annuler le sélecteur conserve le choix précédent. La musique est facultative : son absence ne bloque pas le lancement de la mosaïque.
 
 La musique peut être lue en boucle pendant que la mosaïque fonctionne.
 
@@ -379,6 +411,8 @@ L'application doit rester réactive pendant l'indexation.
 Les miniatures et images doivent être décodées selon la taille de la cellule plutôt qu'en résolution originale systématique.
 
 Les cellules hors écran, le cas échéant, doivent libérer leurs ressources.
+
+L'historique de navigation doit respecter la limite de 5 à 10 retours de F-010a, sans accumulation de ressources multimédias décodées. Une longue série de swipes doit conserver un nombre borné d'entrées et ne pas provoquer de croissance mémoire continue.
 
 ### NF-002 — Vidéos simultanées
 
@@ -607,9 +641,13 @@ La V1 utilisera un `RandomEngine` global par session, plutôt qu'un générateur
 
 Sélection du dossier racine, arbre dépliable des sous-dossiers, cases de sélection hiérarchiques, compteurs, boutons Tout sélectionner / Tout exclure / Actualiser et total de fichiers du Random Set.
 
+Choix facultatif d'un son de fond, avec affichage du fichier sélectionné et actions de remplacement ou de retrait, avant le lancement du lecteur.
+
 Écran B — Mosaïque
 
 Grille dynamique avec 1, 4, 9 ou 16 cellules, commandes globales, sélection de la cellule audio, mode immersif et retour vers la bibliothèque.
+
+Menu Stop / Next / Reload / Son accessible aussi dans l'image agrandie et en mode immersif. Swipe à droite pour avancer, swipe à gauche pour revenir dans l'historique de la mosaïque ou de l'image agrandie selon la vue active (F-010a).
 
 Écran C — Paramètres
 
@@ -643,6 +681,13 @@ Les tests ci-dessous forment les conditions de validation du MVP.
 | AC-14 | Retour après fermeture                                             | Dossiers sélectionnés et paramètres restaurés                                          |
 | AC-15 | 10 000 fichiers indexés                                            | Scan terminé sans crash et interface réactive                                          |
 | AC-16 | Grille 4 × 4 avec plusieurs vidéos lourdes                         | Limitation automatique des vidéos actives sans crash                                   |
+| AC-17 | Ouvrir les commandes en mosaïque, en mode immersif et dans l'image agrandie | Stop, Next, Reload et Son accessibles sans quitter la vue ; comportement conforme à F-010 |
+| AC-18 | Choisir, remplacer, retirer ou annuler un son depuis la sélection des dossiers | Choix partagé avec les paramètres et restauré après fermeture ; annulation sans perte du choix précédent ; lancement possible sans son |
+| AC-19 | Swiper à droite puis à gauche dans la mosaïque | Nouvelle mosaïque puis restauration de la précédente avec sa disposition ; avancer après retour restitue l'état connu sans tirage supplémentaire |
+| AC-20 | Swiper à droite puis à gauche dans une image agrandie | Média suivant puis précédent de la cellule ; vue agrandie conservée et aucune autre cellule renouvelée par le geste |
+| AC-21 | Dépasser la capacité de l'historique puis revenir au plus ancien état | Au plus 10 retours, ou 5 sur appareil à mémoire réduite ; état conservé à la limite et information explicite ; aucune ressource décodée retenue par l'historique |
+| AC-22 | Consulter un état passé, utiliser Stop, puis revenir au plus récent | Transitions du contexte consulté suspendues dans le passé ; aucune reprise automatique après Stop |
+| AC-23 | Faire un Reload ou changer les dossiers, la grille ou le mode ; rendre un média historique inaccessible | Historique concerné réinitialisé ; aucune restauration d'un média inaccessible ou exclu ; information en cas d'entrée ignorée |
 
 Pour les tests de performances, utiliser au minimum un appareil Android d'entrée de gamme, un appareil intermédiaire et un appareil haut de gamme, ainsi qu'un émulateur.
 

@@ -21,6 +21,7 @@ import fr.randommediapicker.domain.*
 fun LibraryScreen(
     state: LibraryUiState, scanning: Boolean, progress: ScanProgress, permissionLost: Boolean,
     chooseRoot: () -> Unit, refresh: () -> Unit, select: (String?, Boolean) -> Unit, play: () -> Unit,
+    settings: PlaybackSettings, chooseMusic: () -> Unit, removeMusic: () -> Unit, enableMusic: (Boolean) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(setOf<String>()) }
     val children = remember(state.folders) { state.folders.groupBy { it.parentId } }
@@ -48,6 +49,11 @@ fun LibraryScreen(
                         Text(if (state.root == null) "Choisir un dossier" else "Changer de dossier")
                     }
                 }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Box(Modifier.padding(20.dp)) { MusicSelection(settings, chooseMusic, removeMusic, enableMusic) }
             }
         }
         if (permissionLost) item {

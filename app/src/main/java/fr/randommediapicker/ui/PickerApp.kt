@@ -126,12 +126,15 @@ fun PickerApp(model: PickerViewModel, activity: ComponentActivity) {
                     0 -> LibraryScreen(library, scanning, progress, permissionLost,
                         chooseRoot = { treePicker.launch(library.root?.treeUri?.let(Uri::parse)) },
                         refresh = model::refresh, select = model::selectFolder,
-                        play = { screen = 1 })
+                        play = { screen = 1 }, settings = settings,
+                        chooseMusic = { audioPicker.launch(arrayOf("audio/*")) }, removeMusic = model::removeMusic,
+                        enableMusic = { value -> model.updateSettings { it.copy(musicEnabled = value) } })
                     1 -> GridScreen(model, settings, library.eligibleCount, permissionLost,
                         immersive = immersive, toggleImmersive = { immersive = !immersive },
                         openLibrary = { screen = 0 }, openSettings = { returnScreen = 1; screen = 2 })
                     2 -> SettingsScreen(settings, { model.updateSettings(it) },
                         chooseMusic = { audioPicker.launch(arrayOf("audio/*")) },
+                        removeMusic = model::removeMusic,
                         chooseRoot = { treePicker.launch(library.root?.treeUri?.let(Uri::parse)) })
                 }
             }

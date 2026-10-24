@@ -54,17 +54,18 @@ fun GridScreen(
     val playing by model.playback.playing.collectAsStateWithLifecycle()
     val muted by model.playback.muted.collectAsStateWithLifecycle()
     val focus by model.playback.focus.collectAsStateWithLifecycle()
-    var enlarged by remember { mutableStateOf<Int?>(null) }
+    val enlarged by model.playback.enlarged.collectAsStateWithLifecycle()
+    val historyPaused by model.playback.historyPaused.collectAsStateWithLifecycle()
+    val navigationNotice by model.playback.navigationNotice.collectAsStateWithLifecycle()
+    val enabled = eligibleCount > 0 && !permissionLost
     var information by remember { mutableStateOf<GridCellState?>(null) }
     Column(Modifier.fillMaxSize()) {
         LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            item { IconButton(onClick = model.playback::togglePause, enabled = cells.any { it.media != null } && !permissionLost) {
-                Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause globale" else "Reprendre la lecture")
-            } }
-            item { IconButton(onClick = { model.playback.nextAll() }, enabled = eligibleCount > 0 && !permissionLost) { Icon(Icons.Default.SkipNext, "Médias suivants pour toute la grille") } }
-            item { IconButton(onClick = { model.playback.restartCycle() }, enabled = eligibleCount > 0 && !permissionLost) { Icon(Icons.Default.Refresh, "Recommencer le cycle de toute la grille") } }
-            item { IconButton(onClick = model.playback::toggleMute) { Icon(if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, if (muted) "Activer le son" else "Couper le son global") } }
+            item { PlaybackControls(playing, muted, enabled,
+                stop = model.playback::stop, resume = model.playback::togglePause,
+                previous = { model.playback.navigate(false) }, next = { model.playback.nextAll() },
+                reload = { model.playback.restartCycle() }, sound = model.playback::toggleMute) }
             item {
                 var gridMenu by remember { mutableStateOf(false) }
                 Box {
@@ -95,21 +96,24 @@ fun GridScreen(
                 TextButton(onClick = openLibrary) { Text("Retourner à la sélection") }
             }
         } else {
-            Column(Modifier.weight(1f).fillMaxWidth().padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.weight(1f).fillMaxWidth().padding(4.dp)
+                .navigationSwipes(previous = { if (enabled) model.playback.navigate(false) },
+                    next = { if (enabled) model.playback.nextAll() }), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 repeat(settings.gridSize) { row ->
                     Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         repeat(settings.gridSize) { col ->
                             val index = row * settings.gridSize + col
                             val cell = cells.getOrNull(index)
                             Box(Modifier.weight(1f).fillMaxHeight()) {
-                                if (cell != null && enlarged != index) MediaCell(cell, model, settings, running, focus == index,
-                                    enlarge = { enlarged = index }, info = { information = cell })
+                                if (cell != null && enlarged != index) MediaCell(cell, model, settings, running && index !in historyPaused, focus == index,
+                                    enlarge = { model.playback.setEnlarged(index) }, info = { information = cell })
                             }
                         }
                     }
                 }
             }
         }
+        navigationNotice?.let { Text(it, modifier = Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodySmall) }
         if (!immersive) Text(
             "${if (settings.randomMode == RandomMode.SHUFFLE) "Shuffle" else "Random"} · ${if (running) "Lecture" else "Pause"} · ${model.playback.videoBudget} vidéo(s) active(s) max.",
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall,
@@ -117,7 +121,7 @@ fun GridScreen(
         )
     }
     enlarged?.let { index ->
-        Dialog(onDismissRequest = { enlarged = null }, properties = DialogProperties(
+        Dialog(onDismissRequest = { model.playback.setEnlarged(null) }, properties = DialogProperties(
             usePlatformDefaultWidth = false, decorFitsSystemWindows = false,
         )) {
             val window = (LocalView.current.parent as? DialogWindowProvider)?.window
@@ -130,12 +134,27 @@ fun GridScreen(
                 onDispose { }
             }
             Surface(Modifier.fillMaxSize(), color = Color.Black) {
-                Box {
-                    cells.getOrNull(index)?.let { cell -> MediaCell(cell, model, settings, running, focus == index,
-                        enlarge = { enlarged = null }, info = { information = cell }, fullScreen = true) }
-                    FilledTonalIconButton(onClick = { enlarged = null }, modifier = Modifier.align(Alignment.TopEnd)
-                        .windowInsetsPadding(WindowInsets.displayCutout).padding(16.dp)) {
-                        Icon(Icons.Default.Close, "Fermer la vue agrandie")
+                Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                    Surface {
+                        Column(Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Vue agrandie", modifier = Modifier.weight(1f).padding(start = 16.dp))
+                                IconButton(onClick = { model.playback.setEnlarged(null) }) {
+                                    Icon(Icons.Default.Close, "Fermer la vue agrandie")
+                                }
+                            }
+                            PlaybackControls(playing, muted, enabled,
+                                stop = model.playback::stop, resume = model.playback::togglePause,
+                                previous = { model.playback.navigate(false, index) }, next = { model.playback.navigate(true, index) },
+                                reload = { model.playback.restartCycle() }, sound = model.playback::toggleMute)
+                            navigationNotice?.let { Text(it, modifier = Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodySmall) }
+                        }
+                    }
+                    Box(Modifier.weight(1f).fillMaxWidth().navigationSwipes(
+                        previous = { if (enabled) model.playback.navigate(false, index) },
+                        next = { if (enabled) model.playback.navigate(true, index) })) {
+                        cells.getOrNull(index)?.let { cell -> MediaCell(cell, model, settings, running && index !in historyPaused, focus == index,
+                            enlarge = { model.playback.setEnlarged(null) }, info = { information = cell }, fullScreen = true) }
                     }
                 }
             }
